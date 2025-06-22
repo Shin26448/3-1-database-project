@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Churn Dashboard</title>
+  <style>
+    body { font-family: sans-serif; margin:20px; }
+    #controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    select, input, button { padding:8px; font-size:1rem; }
+    #loader {
+      position:fixed; top:0; left:0; right:0; bottom:0;
+      background:rgba(255,255,255,0.7);
+      display:none; align-items:center; justify-content:center;
+      z-index:1000;
+    }
+    #loader .spinner {
+      width:40px; height:40px;
+      border:5px solid #ccc; border-top-color:#036;
+      border-radius:50%; animation:spin .8s linear infinite;
+    }
+    @keyframes spin { to{transform:rotate(360deg);} }
+  </style>
+</head>
+<body>
+  <h1>Churn Dashboard</h1>
+  <div id="controls">
+    <label>분석 기준:
+      <select id="filter">
+        <optgroup label="View 기반">
+          <option value="tenure">Tenure</option>
+          <option value="gender">Gender</option>
+          <option value="contract">Contract</option>
+          <option value="service">Service</option>
+          <option value="charge">Charge Group</option>
+        </optgroup>
+        <optgroup label="Proc 기반">
+          <option value="contract_proc">Contract (Proc)</option>
+          <option value="payment_proc">Payment (Proc)</option>
+        </optgroup>
+      </select>
+    </label>
+    <label id="param-label" style="display:none">파라미터:
+      <select id="param-select"></select>
+    </label>
+    <button id="applyBtn">적용</button>
+  </div>
+  <div id="loader"><div class="spinner"></div></div>
+  <canvas id="churnChart"></canvas>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const VIEW_PARAMS = {
+      'contract_proc': ['Month-to-month','One Year','Two Year'],
+      'payment_proc': ['Electronic check','Mailed check','Bank transfer (automatic)','Credit card (automatic)']
+    };
+
+    const filterEl = document.getElementById('filter');
+    const paramEl  = document.getElementById('param-select');
+    const paramLabel = document.getElementById('param-label');
+    const applyBtn = document.getElementById('applyBtn');
+    const loader = document.getElementById('loader');
+    let chart;
+
+    function showParams() {
+      const key = filterEl.value;
+      if (VIEW_PARAMS[key]) {
+        paramEl.innerHTML = VIEW_PARAMS[key]
+          .map(v => `<option value="${v}">${v}</option>`)
+          .join('');
+        paramLabel.style.display = 'inline-block';
+      } else {
+        paramLabel.style.display = 'none';
+      }
+    }
+
+    async function fetchAndRender() {
+      loader.style.display = 'flex';
+      const by = filterEl.value;
+      const arg = VIEW_PARAMS[by] ? paramEl.value : '';
+      const res = await fetch(`/data?by=${by}&arg=${encodeURIComponent(arg)}`);
+      const json = await res.json();
+      loader.style.display = 'none';
+      if (json.error) {
+        alert('에러: ' + json.error);
+        return;
+      }
+      const ctx = document.getElementById('churnChart').getContext('2d');
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: json.labels, datasets:[{
+          label: 'Churn Rate',
+          data: json.values,
+          backgroundColor: 'rgba(3,102,214,0.4)'
+        }]},
+        options: {
+          responsive: true,
+          scales: {
+            x: { ticks:{ autoSkip:true, maxRotation:0 } },
+            y: { beginAtZero:true }
+          }
+        }
+      });
+    }
+
+    // 이벤트 바인딩
+    filterEl.addEventListener('change', showParams);
+    applyBtn.addEventListener('click', fetchAndRender);
+
+    // 초기 로드
+    showParams();
+    fetchAndRender();
+  </script>
+</body>
+</html>
